@@ -5,12 +5,14 @@ from flask import Flask, request, redirect, url_for, render_template, flash
 from werkzeug.utils import secure_filename
 from keras.models import Sequential, load_model
 from keras.preprocessing import image
+from PIL import Image
 import tensorflow as tf
 import numpy as np
+from datetime import datetime
+import face_recognition
 
 # 選手名
-# classes = ['渋野日向子', '大里桃子', '河本', '小祝さくら']
-classes = ['小祝さくら', '河本', '渋野日向子', '大里桃子']
+classes = ['渋野日向子', '小祝さくら', '原英莉花']
 num_classes = len(classes)
 image_size = 64
 
@@ -29,25 +31,31 @@ def allowed_file(filename):
     # rsplitは区切る順序が文字列の最後から’１’回区切る。lowerは文字列を小文字に変換
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# 顔を検出する(haarcascade)
 def detect_face(img_path):
-    img = cv2.imread(img_path, 1)
-    
-    img_gray=cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    cascade_file = "haarcascade_frontalface_alt.xml"
-    cascade = cv2.CascadeClassifier(cascade_file)
-    faces = cascade.detectMultiScale(img_gray, scaleFactor=1.2, minNeighbors=1, minSize=(10,10))
+    image = face_recognition.load_image_file(img_path)
+    faces = face_recognition.face_locations(image)
     if len(faces)>0:
-        i = 0
-        #顔の座標を取り出す
-        for (x,y,w,h) in faces:
-            face = img[y:y+h, x:x+w]
-            img = cv2.resize(face, (64,64))
-            return img
+        face_max = [(abs(faces[i][0]-faces[i][2])) * (abs(faces[i][1]-faces[i][3])) for i in range(len(faces))]
+        top, right, bottom, left = faces[face_max.index(max(face_max))]#1人しか写っていなのでこれで問題ない
+        faceImage = image[top:bottom, left:right]
+        final = Image.fromarray(faceImage)
+
+        final = np.asarray(final.resize((image_size,image_size)))
+        final = Image.fromarray(final)
+
+        basename = datetime.now().strftime("%Y%m%d-%H%M%S")
+        filepath = UPLOAD_FOLDER + basename+".png"
+        final.save(filepath)
+
+        return final
     else:
         return "顔画像を入力してください"
 
+
+
 #学習済みモデルをロードする
-model = load_model('./golfer_4.h5', compile=False)
+model = load_model('./golfer.h5', compile=False)
 
 graph = tf.get_default_graph()
 
@@ -83,14 +91,18 @@ def upload_file():
                 # 顔部分を検出する
                 img = detect_face(filepath)
 
-                img = image.img_to_array(img)
-                data = np.array([img])
-                #変換したデータをモデルに渡して予測する
-                result = model.predict(data)[0]
-                predicted = result.argmax()
-                pred_answer = "これは " + str(classes[predicted]) + " 選手です"
+                if type(img)!=str:
+                    img = image.img_to_array(img)
+                    data = np.array([img])
+                    #変換したデータをモデルに渡して予測する
+                    result = model.predict(data)[0]
+                    predicted = result.argmax()
+                    pred_answer = "この女子プロは " + str(classes[predicted]) + " です"
 
-                return render_template("index.html",answer=pred_answer)
+                    return render_template("index.html",answer=pred_answer)
+                else:
+                    return render_template("index.html",answer=img)
+
 
         return render_template("index.html",answer="")
 
@@ -98,5 +110,3 @@ def upload_file():
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
     app.run(host ='0.0.0.0',port = port)
-
-# https://jagirl-golfer.herokuapp.com/
