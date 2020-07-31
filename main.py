@@ -31,6 +31,7 @@ def allowed_file(filename):
     # rsplitは区切る順序が文字列の最後から’１’回区切る。lowerは文字列を小文字に変換
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
 # 顔を検出する(haarcascade)
 def detect_face(img_path):
     image = face_recognition.load_image_file(img_path)
